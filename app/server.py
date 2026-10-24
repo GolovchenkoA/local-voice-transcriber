@@ -17,7 +17,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 
 class ModelChoice(BaseModel):
-    id: str
+    id: str | None = None
 
 
 def create_app(engine: Engine) -> FastAPI:
@@ -28,20 +28,43 @@ def create_app(engine: Engine) -> FastAPI:
     def info() -> dict:
         return engine.info()
 
+    async def run_exclusive(func, *args):
+        """Run a slow engine call in a thread while no recording or other load is running."""
+        if busy["on"]:
+            raise HTTPException(409, "Busy: stop the recording or wait for the model to finish loading.")
+        busy["on"] = True
+        try:
+            await asyncio.to_thread(func, *args)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(500, f"{exc}")
+        finally:
+            busy["on"] = False
+
     @app.post("/api/model")
     async def switch_model(choice: ModelChoice) -> dict:
-        if busy["on"]:
-            raise HTTPException(409, "Busy: stop the recording before changing the model.")
         known = {m["id"]: m for m in engine.available_models()}
         if choice.id not in known or not known[choice.id]["downloaded"]:
             raise HTTPException(404, "That model is not downloaded. See the README.")
-        busy["on"] = True
-        try:
-            await asyncio.to_thread(engine.load, choice.id)
-        except Exception as exc:
-            raise HTTPException(500, f"Could not load the model: {exc}")
-        finally:
-            busy["on"] = False
+        if not known[choice.id]["available"]:
+            raise HTTPException(400, f"This model needs the Python package {known[choice.id]['needs']!r}. "
+                                     "See requirements-multispeaker.txt.")
+        await run_exclusive(engine.load, choice.id)
+        return engine.info()
+
+    @app.post("/api/diarizer")
+    async def switch_diarizer(choice: ModelChoice) -> dict:
+        if not choice.id:  # no diarization model
+            await run_exclusive(engine.unload_diarizer)
+            return engine.info()
+        known = {d["id"]: d for d in engine.available_diarizers()}
+        if choice.id not in known or not known[choice.id]["downloaded"]:
+            raise HTTPException(404, "That diarization model is not downloaded. See the README.")
+        if not known[choice.id]["available"]:
+            raise HTTPException(400, f"This model needs the Python package {known[choice.id]['needs']!r}. "
+                                     "See requirements-multispeaker.txt.")
+        await run_exclusive(engine.load_diarizer, choice.id)
         return engine.info()
 
     @app.get("/")
@@ -58,9 +81,15 @@ def create_app(engine: Engine) -> FastAPI:
         def push(item: dict | None) -> None:
             loop.call_soon_threadsafe(out.put_nowait, item)
 
-        def work(language: str | None) -> None:
+        def work(language: str | None, mode: str) -> None:
             try:
-                engine.transcribe(pcm, lambda text: push({"type": "text", "delta": text}), language)
+                engine.transcribe(
+                    pcm,
+                    lambda text: push({"type": "text", "delta": text}),
+                    language,
+                    mode,
+                    lambda turns: push({"type": "turns", "turns": turns}),
+                )
                 push({"type": "done"})
             except Exception as exc:  # report to the browser instead of dying silently
                 push({"type": "error", "message": f"Engine error: {exc}"})
@@ -100,7 +129,9 @@ def create_app(engine: Engine) -> FastAPI:
                         if busy["on"]:
                             await send({"type": "error", "message": "Another recording is in progress (busy)."})
                             break
+                        mode = data.get("mode") or "single"
                         try:
+                            engine.check_mode(mode)
                             language = engine.resolve_language(data.get("language"))
                         except ValueError as exc:
                             await send({"type": "error", "message": str(exc)})
@@ -109,14 +140,14 @@ def create_app(engine: Engine) -> FastAPI:
                         max_s = engine.info()["max_seconds"]
                         if max_s:
                             limit_bytes = max_s * SAMPLE_RATE * 2
-                        worker = threading.Thread(target=work, args=(language,), daemon=True)
+                        worker = threading.Thread(target=work, args=(language, mode), daemon=True)
                         worker.start()
                         sender_task = asyncio.create_task(sender())
                         await send({"type": "ready", "streaming": engine.kind == "streaming"})
                     elif kind == "stop":
                         pcm.put(None)
                         if sender_task is not None:
-                            await sender_task  # flush the text, then finish
+                            await sender_task  # flush the result, then finish
                         break
         except WebSocketDisconnect:
             pass
@@ -124,7 +155,7 @@ def create_app(engine: Engine) -> FastAPI:
             pcm.put(None)  # lets the worker finish if the browser vanished
             if owns_busy:
                 if worker is not None and worker.is_alive():
-                    await asyncio.to_thread(worker.join, 60)
+                    await asyncio.to_thread(worker.join, 120)
                 busy["on"] = False
             if sender_task is not None and not sender_task.done():
                 sender_task.cancel()

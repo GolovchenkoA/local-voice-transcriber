@@ -12,11 +12,12 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 
+html, body { height: 100%; }
 body {
   margin: 0;
-  min-height: 100vh;
-  background: radial-gradient(1000px 520px at 50% -10%, #12261b 0%, var(--bg) 70%) no-repeat, var(--bg);
+  background: radial-gradient(1000px 520px at 50% -10%, #12261b 0%, var(--bg) 70%) no-repeat fixed, var(--bg);
   color: var(--text);
   font-family: var(--sans);
 }
@@ -24,28 +25,37 @@ body {
 button { font-family: inherit; }
 button:focus-visible { outline: 3px solid var(--text); outline-offset: 3px; }
 
+/* The page fills the window: the transcript takes all free space, the recorder only what it needs. */
 .page {
-  max-width: 920px;
+  height: 100vh;
+  height: 100dvh;
+  max-width: 1100px;
   margin: 0 auto;
-  padding: 32px 24px 48px;
+  padding: 20px 24px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 16px;
 }
 
-.top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+.top { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 16px; flex: none; }
 .brand { display: flex; align-items: center; gap: 12px; }
 .brand-text { display: flex; flex-direction: column; }
 .brand-name { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
 .brand-sub { font-size: 13px; color: var(--muted); }
 
-.controls { display: flex; flex-wrap: wrap; gap: 12px; }
-.field { display: flex; flex-direction: column; gap: 4px; }
-.field-label { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+/* The Speakers toggle is on top; all drop-down menus are in one row below it. */
+.controls { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; min-width: 0; width: min(700px, 100%); }
+.selects { display: flex; flex-wrap: nowrap; align-items: flex-end; gap: 12px; width: 100%; }
+.selects .field { flex: 1 1 0; min-width: 0; }
+.selects .field-model { flex-grow: 1.6; }
+.field { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.field-label { padding: 0; font-size: 12px; color: var(--muted); font-family: var(--mono); }
 select {
+  width: 100%;
   min-height: 44px;
-  min-width: 190px;
+  min-width: 0;
   max-width: 100%;
+  text-overflow: ellipsis;
   padding: 0 36px 0 14px;
   border-radius: 12px;
   border: 1px solid #2e4036;
@@ -60,7 +70,19 @@ select:focus-visible { outline: 3px solid var(--text); outline-offset: 2px; }
 select:disabled { opacity: 0.55; cursor: not-allowed; }
 select option:disabled { color: #6b7d72; }
 
-.badges { display: flex; flex-wrap: wrap; gap: 8px; font-family: var(--mono); font-size: 12px; }
+/* Single / Multiple speakers toggle. Its two buttons use the very same rule as the Record button
+   (see ".rec-btn, .segmented label" below). Only the state differs: the chosen one has full colour
+   and a ring, the other one is dimmed. */
+.segmented { display: inline-flex; gap: 8px; }
+.segmented input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.segmented input:not(:checked) + label { opacity: 0.45; }
+.segmented input:not(:checked) + label:hover { opacity: 0.8; }
+.segmented input:checked + label { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
+.segmented input:focus-visible + label { outline: 3px solid var(--text); outline-offset: 5px; }
+.segmented input:disabled + label { cursor: not-allowed; }
+.segmented input:disabled:not(:checked) + label { opacity: 0.3; }
+
+.badges { display: flex; flex-wrap: wrap; gap: 8px; font-family: var(--mono); font-size: 12px; flex: none; }
 .badge {
   padding: 8px 12px;
   border-radius: 999px;
@@ -73,81 +95,19 @@ select option:disabled { color: #6b7d72; }
 .card {
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 24px;
+  border-radius: 20px;
 }
 
-.recorder {
-  padding: 28px 24px 24px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 24px;
-  box-shadow: 0 30px 80px -40px rgba(118, 185, 0, 0.25);
-}
-
-.statusbar {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-family: var(--mono);
-  font-size: 13px;
-}
-.status { display: flex; align-items: center; gap: 8px; color: #9db3a5; }
-.status .dot { width: 10px; height: 10px; border-radius: 50%; background: currentColor; display: inline-block; }
-.status[data-state="live"] { color: #ff7a70; }
-.status[data-state="live"] .dot { animation: blink 1.2s ease-in-out infinite; }
-.status[data-state="error"] { color: #ffb36b; }
-.timer { color: #b7c7bd; font-size: 15px; }
-
-.viz {
-  width: 100%;
-  height: 160px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  overflow: hidden;
-}
-.viz .bar {
-  flex: 1 1 0;
-  min-width: 2px;
-  max-width: 12px;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--accent);
-  opacity: 0.35;
-}
-.viz.live .bar { background: var(--hot); }
-
-.rec-btn {
-  min-height: 64px;
-  min-width: 200px;
-  padding: 0 36px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--accent);
-  color: var(--bg);
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-}
-.rec-btn.live { background: var(--hot); animation: pulse 1.4s ease-out infinite; }
-.rec-btn:disabled { opacity: 0.5; cursor: progress; }
-
-.transcript { display: flex; flex-direction: column; overflow: hidden; }
+/* ---- transcript: grows to fill the free space ---- */
+.transcript { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .transcript-head {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 16px 24px;
+  padding: 12px 20px;
   border-bottom: 1px solid var(--line);
 }
 .transcript-title { display: flex; align-items: baseline; gap: 12px; }
@@ -167,31 +127,109 @@ select option:disabled { color: #6b7d72; }
 .ghost:hover { border-color: var(--accent); color: var(--text); }
 
 .transcript-body {
-  min-height: 220px;
-  max-height: 360px;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
-  padding: 24px;
-  font-size: 24px;
+  padding: 20px 24px;
+  font-size: 22px;
   line-height: 1.5;
   letter-spacing: -0.01em;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+#single-view { white-space: pre-wrap; }
 .placeholder { color: var(--faint); }
 .live { color: var(--accent); }
 .recording .live { color: var(--hot); }
 
-.foot { margin: 0; text-align: center; font-size: 13px; color: var(--faint); }
+/* ---- dialogue (multiple speakers) ---- */
+.dialogue { display: flex; flex-direction: column; gap: 14px; white-space: normal; }
+.turn { display: flex; gap: 14px; align-items: stretch; }
+.turn .marker { flex: none; width: 6px; border-radius: 999px; background: var(--c); }
+.turn .body { min-width: 0; }
+.turn .who { font-family: var(--mono); font-size: 12px; color: var(--c); margin-bottom: 2px; }
+.turn .who .when { color: var(--faint); margin-left: 8px; }
+.turn p { margin: 0; font-size: 20px; line-height: 1.45; }
+.sep { font-family: var(--mono); font-size: 12px; color: var(--faint); border-top: 1px dashed var(--line); padding-top: 8px; }
+
+/* ---- recorder: only as big as its content ---- */
+.recorder {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 10px 16px;
+  box-shadow: 0 20px 60px -40px rgba(118, 185, 0, 0.35);
+}
+.rec-info { display: flex; flex-direction: column; gap: 2px; min-width: 150px; font-family: var(--mono); font-size: 13px; }
+.status { display: flex; align-items: center; gap: 8px; color: #9db3a5; }
+.status .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: currentColor; display: inline-block; }
+.status[data-state="live"] { color: #ff7a70; }
+.status[data-state="live"] .dot { animation: blink 1.2s ease-in-out infinite; }
+.status[data-state="error"] { color: #ffb36b; }
+.timer { color: #b7c7bd; font-size: 15px; padding-left: 18px; }
+
+.viz {
+  flex: 1 1 220px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  overflow: hidden;
+}
+.viz .bar {
+  flex: 1 1 0;
+  min-width: 2px;
+  max-width: 10px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  opacity: 0.35;
+}
+.viz.live .bar { background: var(--hot); }
+
+/* One shared look for the Record button and the Speakers toggle buttons */
+.rec-btn, .segmented label {
+  flex: none;
+  user-select: none;
+  min-height: 52px;
+  min-width: 160px;
+  padding: 0 28px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.rec-btn.live { background: var(--hot); animation: pulse 1.4s ease-out infinite; }
+.rec-btn:disabled { opacity: 0.5; cursor: progress; }
 
 @keyframes pulse {
   0% { box-shadow: 0 0 0 0 rgba(255, 90, 78, 0.55); }
-  100% { box-shadow: 0 0 0 22px rgba(255, 90, 78, 0); }
+  100% { box-shadow: 0 0 0 18px rgba(255, 90, 78, 0); }
 }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
 
 @media (prefers-reduced-motion: reduce) {
   .rec-btn.live, .status[data-state="live"] .dot { animation: none; }
 }
-@media (max-width: 560px) {
-  .transcript-body { font-size: 20px; }
+@media (max-width: 640px) {
+  .page { padding: 12px; gap: 12px; }
+  .transcript-body { font-size: 18px; padding: 14px; }
+  .turn p { font-size: 17px; }
+  .controls { width: 100%; }
+  .selects { flex-wrap: wrap; width: 100%; }
+  .selects .field { flex: 1 1 200px; }
+  .segmented label { min-width: 0; padding: 0 22px; }
+  .rec-info { flex-direction: row; align-items: center; gap: 12px; }
+  .viz { order: 3; flex-basis: 100%; }
+  .rec-btn { margin-left: auto; }
 }

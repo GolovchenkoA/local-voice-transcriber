@@ -17,26 +17,64 @@
         <span class="brand-sub">Local speech-to-text</span>
       </div>
     </div>
+
     <div class="controls">
-      <label class="field">
-        <span class="field-label">Model</span>
-        <select id="model-select" disabled><option>Loading…</option></select>
-      </label>
-      <label class="field">
-        <span class="field-label">Language</span>
-        <select id="language-select" disabled><option>…</option></select>
-      </label>
+      <fieldset class="field speakers">
+        <legend class="field-label">Speakers</legend>
+        <div class="segmented">
+          <input type="radio" name="speakers" id="mode-single" value="single" checked>
+          <label for="mode-single">Single</label>
+          <input type="radio" name="speakers" id="mode-multi" value="multi">
+          <label for="mode-multi">Multiple</label>
+        </div>
+      </fieldset>
+      <div class="selects">
+        <label class="field field-model">
+          <span class="field-label">Model</span>
+          <select id="model-select" disabled><option>Loading…</option></select>
+        </label>
+        <label class="field">
+          <span class="field-label">Language</span>
+          <select id="language-select" disabled><option>…</option></select>
+        </label>
+        <label class="field" id="diarizer-field" hidden>
+          <span class="field-label">Diarization model</span>
+          <select id="diarizer-select" disabled><option>…</option></select>
+        </label>
+      </div>
     </div>
   </header>
 
   <div class="badges" id="badges">
     <span class="badge">100% offline</span>
     <span class="badge" id="badge-device">Detecting GPU…</span>
+    <span class="badge" id="badge-speakers">&nbsp;</span>
+    <span class="badge" id="badge-model">&nbsp;</span>
+    <span class="badge" id="badge-diarizer" hidden>&nbsp;</span>
     <span class="badge" id="badge-mode">&nbsp;</span>
+    <span class="badge" id="badge-language">&nbsp;</span>
   </div>
 
+  <section class="card transcript">
+    <div class="transcript-head">
+      <div class="transcript-title">
+        <span class="h">Transcript</span>
+        <span class="count" id="count">0 words</span>
+      </div>
+      <div class="actions">
+        <button class="ghost" id="copy-btn" type="button">Copy</button>
+        <button class="ghost" id="clear-btn" type="button">Clear</button>
+      </div>
+    </div>
+    <div class="transcript-body" id="transcript" aria-live="polite">
+      <span class="placeholder" id="placeholder">Press Record and start talking. Your words will appear here.</span>
+      <div id="single-view"><span id="text-stable"></span><span id="text-live" class="live"></span></div>
+      <div id="dialogue" class="dialogue" hidden></div>
+    </div>
+  </section>
+
   <section class="card recorder">
-    <div class="statusbar">
+    <div class="rec-info">
       <div class="status" id="status" data-state="idle">
         <span class="dot" id="dot"></span>
         <span id="status-text">Ready</span>
@@ -52,24 +90,6 @@
     </button>
   </section>
 
-  <section class="card transcript">
-    <div class="transcript-head">
-      <div class="transcript-title">
-        <span class="h">Transcript</span>
-        <span class="count" id="count">0 words</span>
-      </div>
-      <div class="actions">
-        <button class="ghost" id="copy-btn" type="button">Copy</button>
-        <button class="ghost" id="clear-btn" type="button">Clear</button>
-      </div>
-    </div>
-    <div class="transcript-body" id="transcript" aria-live="polite">
-      <span class="placeholder" id="placeholder">Press Record and start talking. Your words will appear here as you speak.</span>
-      <span id="text-stable"></span><span id="text-live" class="live"></span>
-    </div>
-  </section>
-
-  <p class="foot">Everything runs on this computer. Audio is never sent over the internet.</p>
 </main>
 <script src="/static/app.js"></script>
 </body>

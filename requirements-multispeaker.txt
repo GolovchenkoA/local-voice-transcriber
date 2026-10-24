@@ -1,0 +1,6 @@
+# Optional: only for the pyannote community-1 diarization model (Multiple speakers).
+# Nemotron-3-Diarization and VibeVoice do not need it.
+#   pip install -r requirements-multispeaker.txt
+# Warning: pyannote.audio pulls in many packages and may change your PyTorch version.
+# Afterwards run `python scripts/check_setup.py` to check that CUDA still works.
+pyannote.audio

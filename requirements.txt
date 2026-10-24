@@ -1,9 +1,13 @@
 # Install PyTorch first, with a CUDA 12.8+ build (required for RTX 50-series / Blackwell):
 #   pip install torch --index-url https://download.pytorch.org/whl/cu128
-transformers>=5.13.0
+# Tested versions: torch 2.11, transformers 5.20.2, bitsandbytes 0.50.2.
+# VibeVoice and Nemotron-3-Diarization need a recent transformers, so do not go below 5.20.
+transformers>=5.20.2
 accelerate
 numpy
 librosa
 huggingface_hub
 fastapi
 uvicorn[standard]
+# Needed for the 4-bit VibeVoice model (it stays greyed out in the menu without it)
+bitsandbytes>=0.48.1

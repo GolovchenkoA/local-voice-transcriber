@@ -1,3 +1,6 @@
+# Remembered choices of this computer (last model and diarization model)
+settings.json
+
 # Downloaded model files (about 2.4 GB; fetched with scripts/download_model.py)
 models/
 *.safetensors
@@ -44,7 +47,7 @@ huggingface/
 *.iml
 
 # Claude Code local settings
-.claude/
+.claude/settings.local.json
 
 # OS files
 .DS_Store

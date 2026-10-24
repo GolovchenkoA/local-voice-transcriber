@@ -1,33 +1,47 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const BAR_COUNT = 56;
+  // One colour per speaker; speakers are also named in text, so colour is never the only cue.
+  const SPEAKER_COLORS = ["#4cc9f0", "#f4a261", "#b388ff", "#ff6b9a", "#7bd88f", "#f2d55c", "#6fa8ff", "#ff7a66"];
 
   const el = {
     btn: $("rec-btn"), label: $("rec-label"), icon: $("rec-icon"),
     status: $("status"), statusText: $("status-text"), timer: $("timer"),
     viz: $("viz"), count: $("count"), transcript: $("transcript"),
     stable: $("text-stable"), live: $("text-live"), placeholder: $("placeholder"),
+    single: $("single-view"), dialogue: $("dialogue"),
     copy: $("copy-btn"), clear: $("clear-btn"),
-    device: $("badge-device"), mode: $("badge-mode"),
     modelSelect: $("model-select"), langSelect: $("language-select"),
+    diarField: $("diarizer-field"), diarSelect: $("diarizer-select"),
+    radios: document.querySelectorAll('input[name="speakers"]'),
+    bDevice: $("badge-device"), bSpeakers: $("badge-speakers"), bModel: $("badge-model"),
+    bDiar: $("badge-diarizer"), bMode: $("badge-mode"), bLang: $("badge-language"),
   };
 
   const ICON_DOT = '<circle cx="9" cy="9" r="8" fill="currentColor"/>';
   const ICON_SQUARE = '<rect x="2" y="2" width="14" height="14" rx="3" fill="currentColor"/>';
 
-  let text = "";
-  let session = null; // { stream, ctx, node, analyser, ws, pending, ready, startedAt }
+  let mode = "single";    // what the user chose with the toggle
+  let info = null;        // last answer of the server
+  let text = "";          // single-speaker transcript
+  let turns = [];         // dialogue: {speaker, start, end, text, rec}
+  let recordings = 0;
+  let session = null;     // { stream, ctx, node, analyser, ws, pending, ready, rec }
   let finishing = false;
   let timerId = null;
-  let info = null;        // last answer of /api/info
-  let loadingModel = false;
+  let busyLoading = false;
   let streaming = true;   // false: the model transcribes when Stop is pressed
 
+  const hasContent = () => (mode === "multi" ? turns.length > 0 : text.length > 0);
+
+  // ---------- controls ----------
   function updateControls() {
-    const locked = !!session || loadingModel;
+    const locked = !!session || busyLoading;
+    for (const r of el.radios) r.disabled = locked;
     el.modelSelect.disabled = locked || !info;
     el.langSelect.disabled = locked || !info || !info.languages.length;
-    el.btn.disabled = loadingModel || finishing || !info;
+    el.diarSelect.disabled = locked || !info || info.diarization !== "external";
+    el.btn.disabled = busyLoading || finishing || !info;
   }
 
   // ---------- visualizer ----------
@@ -45,6 +59,7 @@
     const t = now / 1000;
     const mid = (BAR_COUNT - 1) / 2;
     const live = session && session.analyser;
+    const maxH = Math.max(12, (el.viz.clientHeight || 52) - 4);
     if (live) {
       if (!freq) freq = new Uint8Array(session.analyser.frequencyBinCount);
       session.analyser.getByteFrequencyData(freq);
@@ -63,7 +78,7 @@
       }
     }
     for (let i = 0; i < BAR_COUNT; i++) {
-      bars[i].style.height = Math.round(6 + levels[i] * 150) + "px";
+      bars[i].style.height = Math.round(4 + levels[i] * (maxH - 4)) + "px";
       bars[i].style.opacity = live ? 0.55 + levels[i] * 0.45 : 0.35;
     }
     requestAnimationFrame(drawBars);
@@ -71,15 +86,67 @@
   requestAnimationFrame(drawBars);
 
   // ---------- transcript ----------
-  function renderText() {
-    const trimmed = text.replace(/\s+$/, "");
-    const cut = trimmed.lastIndexOf(" ") + 1;
-    const recording = !!session && !finishing;
-    el.stable.textContent = text.slice(0, cut);
-    el.live.textContent = text.slice(cut);
-    el.transcript.classList.toggle("recording", recording);
-    el.placeholder.hidden = text.length > 0;
-    const words = trimmed ? trimmed.split(/\s+/).length : 0;
+  const clock = (s) => {
+    s = Math.max(0, Math.floor(s));
+    return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+  };
+  const colorFor = (speaker) => SPEAKER_COLORS[speaker % SPEAKER_COLORS.length];
+
+  function renderDialogue() {
+    const rows = [];
+    let lastRec = null;
+    for (const t of turns) {
+      if (lastRec !== null && t.rec !== lastRec) {
+        const sep = document.createElement("div");
+        sep.className = "sep";
+        sep.textContent = "New recording";
+        rows.push(sep);
+      }
+      lastRec = t.rec;
+      const row = document.createElement("div");
+      row.className = "turn";
+      row.style.setProperty("--c", colorFor(t.speaker));
+      const marker = document.createElement("span");
+      marker.className = "marker";
+      const body = document.createElement("div");
+      body.className = "body";
+      const who = document.createElement("div");
+      who.className = "who";
+      who.textContent = `Speaker ${t.speaker + 1}`;
+      const when = document.createElement("span");
+      when.className = "when";
+      when.textContent = clock(t.start);
+      who.appendChild(when);
+      const p = document.createElement("p");
+      p.textContent = t.text;
+      body.append(who, p);
+      row.append(marker, body);
+      rows.push(row);
+    }
+    el.dialogue.replaceChildren(...rows);
+  }
+
+  function renderTranscript() {
+    const multi = mode === "multi";
+    el.single.hidden = multi;
+    el.dialogue.hidden = !multi;
+    el.placeholder.hidden = hasContent();
+    el.placeholder.textContent = multi
+      ? "Press Record and start talking. The dialogue appears here after you press Stop, one row per speaker."
+      : "Press Record and start talking. Your words will appear here.";
+
+    let words;
+    if (multi) {
+      renderDialogue();
+      words = turns.reduce((n, t) => n + (t.text.trim() ? t.text.trim().split(/\s+/).length : 0), 0);
+    } else {
+      const trimmed = text.replace(/\s+$/, "");
+      const cut = trimmed.lastIndexOf(" ") + 1;
+      el.stable.textContent = text.slice(0, cut);
+      el.live.textContent = text.slice(cut);
+      el.transcript.classList.toggle("recording", !!session && !finishing);
+      words = trimmed ? trimmed.split(/\s+/).length : 0;
+    }
     el.count.textContent = words + (words === 1 ? " word" : " words");
     el.transcript.scrollTop = el.transcript.scrollHeight;
   }
@@ -89,6 +156,7 @@
     el.status.dataset.state = state;
     el.statusText.textContent = message;
   }
+  const idleStatus = () => setStatus("idle", hasContent() ? "Stopped" : "Ready");
 
   function setRecordingUI(on) {
     el.btn.classList.toggle("live", on);
@@ -101,18 +169,18 @@
   function startTimer() {
     const t0 = Date.now();
     el.timer.textContent = "00:00";
-    timerId = setInterval(() => {
-      const s = Math.floor((Date.now() - t0) / 1000);
-      el.timer.textContent = String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
-    }, 250);
+    timerId = setInterval(() => { el.timer.textContent = clock((Date.now() - t0) / 1000); }, 250);
   }
   function stopTimer() { clearInterval(timerId); timerId = null; }
 
   // ---------- recording ----------
   async function start() {
+    if (mode === "multi" && info.diarization === "external" && !info.diarizer) {
+      setStatus("error", "Choose a diarization model first.");
+      return;
+    }
     el.btn.disabled = true;
-    el.modelSelect.disabled = true;
-    el.langSelect.disabled = true;
+    updateControls();
     setStatus("idle", "Connecting…");
     let stream;
     try {
@@ -127,11 +195,12 @@
     const proto = location.protocol === "https:" ? "wss" : "ws";
     const ws = new WebSocket(`${proto}://${location.host}/ws/transcribe`);
     ws.binaryType = "arraybuffer";
-    const s = { stream, ws, pending: [], ready: false, ctx: null, node: null, analyser: null };
+    const s = { stream, ws, pending: [], ready: false, ctx: null, node: null, analyser: null, rec: ++recordings };
     session = s;
 
     ws.onopen = () => ws.send(JSON.stringify({
       type: "start",
+      mode,
       language: info && info.languages.length ? el.langSelect.value : null,
     }));
     ws.onerror = () => fail("Cannot reach the transcription server.");
@@ -146,7 +215,10 @@
         beginCapture(s);
       } else if (msg.type === "text") {
         text += msg.delta;
-        renderText();
+        renderTranscript();
+      } else if (msg.type === "turns") {
+        for (const t of msg.turns) turns.push({ ...t, rec: s.rec });
+        renderTranscript();
       } else if (msg.type === "limit") {
         s.limitHit = true;
         stop(); // the model keeps what was recorded so far and transcribes it
@@ -176,13 +248,16 @@
       fail("Could not start audio capture: " + err.message);
       return;
     }
-    if (text && !/\s$/.test(text)) text += " ";
+    if (mode === "single" && text && !/\s$/.test(text)) text += " ";
     setRecordingUI(true);
     updateControls();
-    setStatus("live", streaming ? "Listening and transcribing" : "Recording. Text appears when you press Stop");
+    setStatus("live", streaming
+      ? "Listening and transcribing"
+      : (mode === "multi" ? "Recording. The dialogue appears when you press Stop"
+                          : "Recording. Text appears when you press Stop"));
     startTimer();
     el.btn.disabled = false;
-    renderText();
+    renderTranscript();
   }
 
   function stop() {
@@ -193,12 +268,13 @@
     updateControls();
     stopTimer();
     setRecordingUI(false);
-    setStatus("idle", streaming ? "Finishing…" : "Transcribing…");
+    setStatus("idle", streaming ? "Finishing…"
+      : (mode === "multi" ? "Transcribing and identifying speakers…" : "Transcribing…"));
     s.stream.getTracks().forEach((t) => t.stop());
     if (s.node) s.node.disconnect();
     if (s.ws.readyState === WebSocket.OPEN) s.ws.send(JSON.stringify({ type: "stop" }));
     // safety net; an offline model may need a while for a long recording
-    setTimeout(() => { if (session === s) endSession(s); }, streaming ? 8000 : 120000);
+    setTimeout(() => { if (session === s) endSession(s); }, streaming ? 8000 : 300000);
   }
 
   function endSession(s) {
@@ -206,9 +282,10 @@
     cleanup(s);
     session = null;
     finishing = false;
-    setStatus("idle", s.limitHit ? "Stopped at the recording length limit" : (text ? "Stopped" : "Ready"));
+    if (s.limitHit) setStatus("idle", "Stopped at the recording length limit");
+    else idleStatus();
     updateControls();
-    renderText();
+    renderTranscript();
   }
 
   function fail(message) {
@@ -219,7 +296,7 @@
     setRecordingUI(false);
     setStatus("error", message);
     updateControls();
-    renderText();
+    renderTranscript();
   }
 
   function cleanup(s) {
@@ -232,10 +309,19 @@
 
   // ---------- buttons ----------
   el.btn.addEventListener("click", () => (session ? stop() : start()));
-  el.clear.addEventListener("click", () => { text = ""; el.timer.textContent = "00:00"; renderText(); if (!session) setStatus("idle", "Ready"); });
+  el.clear.addEventListener("click", () => {
+    text = "";
+    turns = [];
+    el.timer.textContent = "00:00";
+    renderTranscript();
+    if (!session) setStatus("idle", "Ready");
+  });
   el.copy.addEventListener("click", async () => {
+    const content = mode === "multi"
+      ? turns.map((t) => `Speaker ${t.speaker + 1}: ${t.text}`).join("\n")
+      : text.trim();
     try {
-      await navigator.clipboard.writeText(text.trim());
+      await navigator.clipboard.writeText(content);
       const old = el.copy.textContent;
       el.copy.textContent = "Copied";
       setTimeout(() => (el.copy.textContent = old), 1200);
@@ -244,7 +330,7 @@
     }
   });
 
-  // ---------- engine info, model and language menus ----------
+  // ---------- menus and badges ----------
   function option(value, label, disabled) {
     const o = document.createElement("option");
     o.value = value;
@@ -253,59 +339,190 @@
     return o;
   }
 
-  function applyInfo(next) {
-    info = next;
-    streaming = info.streaming;
-    el.device.textContent = info.cuda ? `${info.device} · CUDA` : "CPU (no CUDA)";
-    el.device.classList.toggle("warn", !info.cuda);
-    el.mode.textContent = info.streaming
-      ? `Live · ${info.latency_ms} ms latency`
-      : `Text appears when you press Stop · up to ${Math.round(info.max_seconds / 60)} min`;
+  function problemNote(item) {
+    if (!item.downloaded) return " (not downloaded)";
+    if (!item.available) return ` (needs: pip install ${item.needs})`;
+    return "";
+  }
 
-    el.modelSelect.replaceChildren(...info.models.map((m) =>
-      option(m.id, m.downloaded ? m.label : `${m.label} (not downloaded)`, !m.downloaded)));
-    el.modelSelect.value = info.model;
+  function renderMenus() {
+    if (!info) return;
+    const multi = mode === "multi";
 
+    // model menu: only models that can do the chosen kind of recording
+    const list = info.models.filter((m) => m.modes.includes(mode));
+    const options = list.map((m) => option(m.id, m.label + problemNote(m), !m.downloaded || !m.available));
+    const loadedHere = list.some((m) => m.id === info.model);
+    if (!loadedHere) options.unshift(option("", "Choose a model…", true));
+    el.modelSelect.replaceChildren(...options);
+    el.modelSelect.value = loadedHere ? info.model : "";
+
+    // language menu: from the loaded model
     const previous = el.langSelect.value;
-    if (info.languages.length) {
+    if (loadedHere && info.languages.length) {
       el.langSelect.replaceChildren(...info.languages.map((l) => option(l.code, l.label)));
       const codes = info.languages.map((l) => l.code);
       el.langSelect.value = codes.includes(previous) ? previous : info.default_language;
     } else {
-      el.langSelect.replaceChildren(option("", info.language_note || "Not available"));
+      el.langSelect.replaceChildren(option("", loadedHere ? (info.language_note || "Not available") : "—"));
+    }
+
+    // diarization menu: only for multiple speakers
+    el.diarField.hidden = !multi;
+    if (multi) {
+      if (loadedHere && info.diarization === "builtin") {
+        el.diarSelect.replaceChildren(option("", "Built into the model"));
+        el.diarSelect.value = "";
+      } else {
+        const d = info.diarizers.map((x) => option(x.id, x.label + problemNote(x), !x.downloaded || !x.available));
+        if (!info.diarizer) d.unshift(option("", "Choose a diarization model…", true));
+        el.diarSelect.replaceChildren(...d);
+        el.diarSelect.value = info.diarizer || "";
+      }
     }
     updateControls();
+    renderBadges(loadedHere);
+  }
+
+  function renderBadges(loadedHere = true) {
+    if (!info) return;
+    const multi = mode === "multi";
+    el.bDevice.textContent = info.cuda ? `${info.device} · CUDA` : "CPU (no CUDA)";
+    el.bDevice.classList.toggle("warn", !info.cuda);
+    el.bSpeakers.textContent = multi ? "Multiple speakers" : "Single speaker";
+
+    el.bModel.textContent = loadedHere ? `Model: ${info.model_label}` : "Model: none chosen for this mode";
+    el.bModel.classList.toggle("warn", !loadedHere);
+
+    el.bDiar.hidden = !multi;
+    if (multi) {
+      if (loadedHere && info.diarization === "builtin") {
+        el.bDiar.textContent = "Diarization: built into the model";
+        el.bDiar.classList.remove("warn");
+      } else if (info.diarizer) {
+        const d = info.diarizers.find((x) => x.id === info.diarizer);
+        el.bDiar.textContent = `Diarization: ${d ? d.label : info.diarizer}`;
+        el.bDiar.classList.remove("warn");
+      } else {
+        el.bDiar.textContent = "Diarization: none chosen";
+        el.bDiar.classList.add("warn");
+      }
+    }
+
+    el.bMode.textContent = info.streaming
+      ? `Live · ${info.latency_ms} ms latency`
+      : `Text appears when you press Stop · up to ${Math.round(info.max_seconds / 60)} min`;
+
+    if (loadedHere && info.languages.length) {
+      const chosen = info.languages.find((l) => l.code === el.langSelect.value);
+      el.bLang.textContent = `Language: ${chosen ? chosen.label : "—"}`;
+    } else {
+      el.bLang.textContent = `Language: ${loadedHere ? (info.language_note || "—") : "—"}`;
+    }
+  }
+
+  function applyInfo(next) {
+    info = next;
+    streaming = info.streaming;
+    renderMenus();
+  }
+
+  async function post(url, body, message) {
+    busyLoading = true;
+    updateControls();
+    setStatus("idle", message);
+    try {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) {
+        let detail = r.statusText;
+        try { const j = await r.json(); detail = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail); } catch (_) {}
+        throw new Error(detail);
+      }
+      applyInfo(await r.json());
+      return true;
+    } catch (err) {
+      setStatus("error", String(err.message || err));
+      renderMenus();
+      return false;
+    } finally {
+      busyLoading = false;
+      updateControls();
+    }
+  }
+
+  const loadModel = (id) => post("/api/model", { id }, "Loading model… (a large model can take a minute)");
+  const loadDiarizer = (id) => post("/api/diarizer", { id }, "Loading diarization model…");
+
+  // Make sure the loaded model and the diarization model fit the chosen kind of recording.
+  async function ensureSetup() {
+    if (!info.modes.includes(mode)) {
+      const candidate = info.models.find((m) => m.modes.includes(mode) && m.downloaded && m.available);
+      if (!candidate) {
+        setStatus("error", "No downloaded model supports this. See the README for the download commands.");
+        renderMenus();
+        return;
+      }
+      if (!(await loadModel(candidate.id))) return;
+    }
+    if (mode === "multi" && info.diarization === "external" && !info.diarizer) {
+      const d = info.diarizers.find((x) => x.downloaded && x.available);
+      if (!d) {
+        setStatus("error", "No diarization model is ready. Download one (see the README) or choose VibeVoice.");
+        return;
+      }
+      if (!(await loadDiarizer(d.id))) return;
+    }
+    idleStatus();
+  }
+
+  for (const r of el.radios) {
+    r.addEventListener("change", async () => {
+      if (!r.checked || r.value === mode) return;
+      mode = r.value;
+      try { localStorage.setItem("speakers-mode", mode); } catch (_) {}
+      renderMenus();
+      renderTranscript();
+      await ensureSetup();
+    });
   }
 
   el.modelSelect.addEventListener("change", async () => {
     const wanted = el.modelSelect.value;
-    if (!info || wanted === info.model) return;
-    loadingModel = true;
-    updateControls();
-    setStatus("idle", "Loading model…");
-    try {
-      const r = await fetch("/api/model", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: wanted }),
-      });
-      if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
-      applyInfo(await r.json());
-      setStatus("idle", text ? "Stopped" : "Ready");
-    } catch (err) {
-      el.modelSelect.value = info.model;
-      setStatus("error", String(err.message || err));
-    } finally {
-      loadingModel = false;
-      updateControls();
-    }
+    if (!info || !wanted || wanted === info.model) return;
+    if (await loadModel(wanted)) await ensureSetup();
+    else renderMenus();
   });
+
+  el.diarSelect.addEventListener("change", async () => {
+    const wanted = el.diarSelect.value;
+    if (!info || !wanted || wanted === info.diarizer) return;
+    if (await loadDiarizer(wanted)) idleStatus();
+    else renderMenus();
+  });
+
+  el.langSelect.addEventListener("change", () => renderBadges());
 
   updateControls();
-  fetch("/api/info").then((r) => r.json()).then(applyInfo).catch(() => {
-    el.device.textContent = "Server not reachable";
-    el.device.classList.add("warn");
+  // Come back in the Single / Multiple position used last time.
+  async function restoreMode() {
+    let saved = null;
+    try { saved = localStorage.getItem("speakers-mode"); } catch (_) {}
+    if (saved !== "multi" || mode === "multi") return;
+    mode = "multi";
+    document.getElementById("mode-multi").checked = true;
+    renderMenus();
+    renderTranscript();
+    await ensureSetup();
+  }
+
+  fetch("/api/info").then((r) => r.json()).then(async (i) => { applyInfo(i); await restoreMode(); }).catch(() => {
+    el.bDevice.textContent = "Server not reachable";
+    el.bDevice.classList.add("warn");
   });
 
-  renderText();
+  renderTranscript();
 })();
