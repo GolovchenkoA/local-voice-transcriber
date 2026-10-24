@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Local Voice Transcriber</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main class="page">
+
+  <header class="top">
+    <div class="brand">
+      <svg width="36" height="36" viewBox="0 0 36 36" fill="none" aria-hidden="true"><rect width="36" height="36" rx="10" fill="#76B900"/><path d="M10 22v-8M14.5 25V11M19 20v-4M23.5 27V9M28 22v-8" stroke="#080D0B" stroke-width="2.6" stroke-linecap="round"/></svg>
+      <div class="brand-text">
+        <span class="brand-name">Voice Transcriber</span>
+        <span class="brand-sub">Local speech-to-text</span>
+      </div>
+    </div>
+    <div class="controls">
+      <label class="field">
+        <span class="field-label">Model</span>
+        <select id="model-select" disabled><option>Loading…</option></select>
+      </label>
+      <label class="field">
+        <span class="field-label">Language</span>
+        <select id="language-select" disabled><option>…</option></select>
+      </label>
+    </div>
+  </header>
+
+  <div class="badges" id="badges">
+    <span class="badge">100% offline</span>
+    <span class="badge" id="badge-device">Detecting GPU…</span>
+    <span class="badge" id="badge-mode">&nbsp;</span>
+  </div>
+
+  <section class="card recorder">
+    <div class="statusbar">
+      <div class="status" id="status" data-state="idle">
+        <span class="dot" id="dot"></span>
+        <span id="status-text">Ready</span>
+      </div>
+      <span class="timer" id="timer">00:00</span>
+    </div>
+
+    <div class="viz" id="viz" role="img" aria-label="Live microphone level"></div>
+
+    <button class="rec-btn" id="rec-btn" type="button" aria-pressed="false">
+      <svg id="rec-icon" width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><circle cx="9" cy="9" r="8" fill="currentColor"/></svg>
+      <span id="rec-label">Record</span>
+    </button>
+  </section>
+
+  <section class="card transcript">
+    <div class="transcript-head">
+      <div class="transcript-title">
+        <span class="h">Transcript</span>
+        <span class="count" id="count">0 words</span>
+      </div>
+      <div class="actions">
+        <button class="ghost" id="copy-btn" type="button">Copy</button>
+        <button class="ghost" id="clear-btn" type="button">Clear</button>
+      </div>
+    </div>
+    <div class="transcript-body" id="transcript" aria-live="polite">
+      <span class="placeholder" id="placeholder">Press Record and start talking. Your words will appear here as you speak.</span>
+      <span id="text-stable"></span><span id="text-live" class="live"></span>
+    </div>
+  </section>
+
+  <p class="foot">Everything runs on this computer. Audio is never sent over the internet.</p>
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>

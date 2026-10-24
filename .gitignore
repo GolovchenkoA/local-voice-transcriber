@@ -1,0 +1,52 @@
+# Downloaded model files (about 2.4 GB; fetched with scripts/download_model.py)
+models/
+*.safetensors
+*.nemo
+*.ckpt
+*.onnx
+*.pt
+*.pth
+wheels/
+
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Python build and cache files
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Hugging Face and other caches
+.cache/
+huggingface/
+
+# Local environment files and secrets
+.env
+.env.*
+
+# Test audio and logs
+*.wav
+*.mp3
+*.log
+
+# IDE and editor files
+.idea/
+.vscode/
+*.iml
+
+# Claude Code local settings
+.claude/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
