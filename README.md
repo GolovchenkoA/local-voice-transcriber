@@ -206,7 +206,7 @@ No arguments. Reports Python, PyTorch, CUDA, `transformers`, and every model and
 
 ### Settings that are not parameters
 
-Microphone noise suppression and echo cancellation are switched on in the browser. The speakers toggle, the model, the language and the diarization model are chosen in the web page.
+Microphone noise suppression and echo cancellation are switched on in the browser. To transcribe video or music from the computer, use the microphone button left of **Record** and tick **System audio**: the browser asks you to share a tab or screen, and you must tick **Share audio** in that dialog. This asks every time you press Record, and sharing a tab captures only that tab (share the entire screen to get the sound of all apps). The speakers toggle, the model, the language and the diarization model are chosen in the web page.
 
 ## 3. Using it on a computer with no internet
 

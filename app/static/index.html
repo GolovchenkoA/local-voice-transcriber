@@ -82,7 +82,19 @@
       <span class="timer" id="timer">00:00</span>
     </div>
 
-    <div class="viz" id="viz" role="img" aria-label="Live microphone level"></div>
+    <div class="viz" id="viz" role="img" aria-label="Live input level"></div>
+
+    <div class="inputs">
+      <button class="in-btn" id="in-btn" type="button" aria-haspopup="true" aria-expanded="false"
+              aria-label="Choose audio inputs" title="Audio inputs">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/>
+        </svg>
+        <span class="in-count" id="in-count">1</span>
+      </button>
+      <div class="in-menu" id="in-menu" role="group" aria-label="Audio inputs" hidden></div>
+    </div>
 
     <button class="rec-btn" id="rec-btn" type="button" aria-pressed="false">
       <svg id="rec-icon" width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><circle cx="9" cy="9" r="8" fill="currentColor"/></svg>

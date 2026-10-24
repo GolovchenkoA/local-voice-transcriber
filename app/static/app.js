@@ -16,6 +16,7 @@
     radios: document.querySelectorAll('input[name="speakers"]'),
     bDevice: $("badge-device"), bSpeakers: $("badge-speakers"), bModel: $("badge-model"),
     bDiar: $("badge-diarizer"), bMode: $("badge-mode"), bLang: $("badge-language"),
+    inBtn: $("in-btn"), inMenu: $("in-menu"), inCount: $("in-count"),
   };
 
   const ICON_DOT = '<circle cx="9" cy="9" r="8" fill="currentColor"/>';
@@ -26,7 +27,7 @@
   let text = "";          // single-speaker transcript
   let turns = [];         // dialogue: {speaker, start, end, text, rec}
   let recordings = 0;
-  let session = null;     // { stream, ctx, node, analyser, ws, pending, ready, rec }
+  let session = null;     // { streams, ctx, node, analyser, ws, pending, ready, rec }
   let finishing = false;
   let timerId = null;
   let busyLoading = false;
@@ -42,6 +43,125 @@
     el.langSelect.disabled = locked || !info || !info.languages.length;
     el.diarSelect.disabled = locked || !info || info.diarization !== "external";
     el.btn.disabled = busyLoading || finishing || !info;
+    el.inBtn.disabled = locked;
+    if (locked) closeInputMenu();
+  }
+
+  // ---------- audio inputs ----------
+  const SYSTEM = "system"; // id of "computer audio" (picked in the browser's share dialog)
+  let mics = [];           // {id, label}
+  let chosen = new Set();  // ticked ids: microphone device ids and SYSTEM
+  const stopStream = (st) => { try { st.getTracks().forEach((t) => t.stop()); } catch (_) {} };
+
+  function saveInputs() {
+    try { localStorage.setItem("audio-inputs", JSON.stringify([...chosen])); } catch (_) {}
+    el.inCount.textContent = chosen.size;
+    el.inBtn.title = `Audio inputs (${chosen.size} selected)`;
+  }
+
+  async function loadMics(askForNames) {
+    try {
+      let devs = await navigator.mediaDevices.enumerateDevices();
+      if (askForNames && devs.some((d) => d.kind === "audioinput" && !d.label)) {
+        // device names are hidden until the page has microphone access
+        stopStream(await navigator.mediaDevices.getUserMedia({ audio: true }));
+        devs = await navigator.mediaDevices.enumerateDevices();
+      }
+      mics = devs.filter((d) => d.kind === "audioinput" && d.deviceId !== "communications")
+        .map((d, i) => ({ id: d.deviceId, label: d.label || `Microphone ${i + 1}` }));
+    } catch (_) { /* no access yet: keep the list we have */ }
+  }
+
+  function renderInputMenu() {
+    el.inMenu.textContent = "";
+    const head = (t) => { const h = document.createElement("div"); h.className = "in-head"; h.textContent = t; el.inMenu.append(h); };
+    const add = (id, label, hint) => {
+      const row = document.createElement("label");
+      row.className = "in-item";
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = chosen.has(id);
+      box.onchange = () => { if (box.checked) chosen.add(id); else chosen.delete(id); saveInputs(); };
+      const name = document.createElement("span");
+      name.textContent = label;
+      if (hint) { const s = document.createElement("small"); s.textContent = hint; name.append(s); }
+      row.append(box, name);
+      el.inMenu.append(row);
+    };
+    head("Microphones");
+    if (!mics.length) {
+      const none = document.createElement("div");
+      none.className = "in-empty";
+      none.textContent = "No microphone found";
+      el.inMenu.append(none);
+    }
+    mics.forEach((m) => add(m.id, m.label));
+    head("Computer");
+    add(SYSTEM, "System audio", "Video, music, calls. In the share dialog choose a tab or screen and tick “Share audio”.");
+  }
+
+  function closeInputMenu() {
+    el.inMenu.hidden = true;
+    el.inBtn.setAttribute("aria-expanded", "false");
+  }
+
+  el.inBtn.addEventListener("click", async () => {
+    if (!el.inMenu.hidden) { closeInputMenu(); return; }
+    el.inMenu.hidden = false;
+    el.inBtn.setAttribute("aria-expanded", "true");
+    renderInputMenu();
+    await loadMics(true);
+    if (!el.inMenu.hidden) renderInputMenu();
+  });
+  document.addEventListener("click", (e) => { if (!e.target.closest(".inputs")) closeInputMenu(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeInputMenu(); });
+
+  async function initInputs() {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem("audio-inputs")); } catch (_) {}
+    await loadMics(false);
+    const known = new Set([SYSTEM, ...mics.map((m) => m.id)]);
+    chosen = new Set(Array.isArray(saved) ? saved.filter((id) => known.has(id)) : []);
+    // the microphone is ticked by default
+    if (!chosen.size && !Array.isArray(saved)) {
+      const def = mics.find((m) => m.id === "default") || mics[0];
+      chosen.add(def ? def.id : "default");
+    }
+    saveInputs();
+  }
+
+  // Open every ticked input; system audio goes first because the share dialog needs the click.
+  async function openInputs() {
+    if (!chosen.size) throw new Error("Tick at least one audio input.");
+    const ids = [...chosen].sort((a, b) => (b === SYSTEM) - (a === SYSTEM));
+    const streams = [];
+    for (const id of ids) {
+      try {
+        if (id === SYSTEM) {
+          const disp = await navigator.mediaDevices.getDisplayMedia({
+            video: true,
+            audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+          });
+          disp.getVideoTracks().forEach((t) => t.stop());
+          if (!disp.getAudioTracks().length) {
+            stopStream(disp);
+            throw new Error("No audio was shared. Choose a tab or screen and tick “Share audio”.");
+          }
+          streams.push(new MediaStream(disp.getAudioTracks()));
+        } else {
+          streams.push(await navigator.mediaDevices.getUserMedia({
+            audio: { deviceId: { exact: id }, channelCount: 1, echoCancellation: true, noiseSuppression: true },
+          }));
+        }
+      } catch (err) {
+        streams.forEach(stopStream);
+        if (err.message.startsWith("No audio")) throw err;
+        if (id === SYSTEM) throw new Error("System audio sharing was cancelled or blocked.");
+        throw new Error(err.name === "NotFoundError" || err.name === "OverconstrainedError"
+          ? "The chosen microphone was not found." : "Microphone access was blocked.");
+      }
+    }
+    return streams;
   }
 
   // ---------- visualizer ----------
@@ -182,21 +302,23 @@
     el.btn.disabled = true;
     updateControls();
     setStatus("idle", "Connecting…");
-    let stream;
+    let streams;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
-      });
+      streams = await openInputs();
     } catch (err) {
-      fail(err && err.name === "NotFoundError" ? "No microphone found." : "Microphone access was blocked.");
+      fail(err.message);
       return;
     }
 
     const proto = location.protocol === "https:" ? "wss" : "ws";
     const ws = new WebSocket(`${proto}://${location.host}/ws/transcribe`);
     ws.binaryType = "arraybuffer";
-    const s = { stream, ws, pending: [], ready: false, ctx: null, node: null, analyser: null, rec: ++recordings };
+    const s = { streams, ws, pending: [], ready: false, ctx: null, node: null, analyser: null, rec: ++recordings };
     session = s;
+    // "Stop sharing" in the browser bar (or an unplugged microphone) ends the recording
+    streams.flatMap((st) => st.getAudioTracks()).forEach((t) => t.addEventListener("ended", () => {
+      if (session === s && !finishing && s.streams.every((st) => st.getAudioTracks().every((x) => x.readyState === "ended"))) stop();
+    }));
 
     ws.onopen = () => ws.send(JSON.stringify({
       type: "start",
@@ -234,7 +356,10 @@
     try {
       s.ctx = new AudioContext();
       await s.ctx.audioWorklet.addModule("/static/pcm-worklet.js");
-      const source = s.ctx.createMediaStreamSource(s.stream);
+      // all ticked inputs are mixed into one signal
+      const source = s.ctx.createGain();
+      source.gain.value = s.streams.length > 1 ? 0.7 : 1;
+      s.streams.forEach((st) => s.ctx.createMediaStreamSource(st).connect(source));
       s.analyser = s.ctx.createAnalyser();
       s.analyser.fftSize = 1024;
       s.analyser.smoothingTimeConstant = 0.6;
@@ -270,7 +395,7 @@
     setRecordingUI(false);
     setStatus("idle", streaming ? "Finishing…"
       : (mode === "multi" ? "Transcribing and identifying speakers…" : "Transcribing…"));
-    s.stream.getTracks().forEach((t) => t.stop());
+    s.streams.forEach(stopStream);
     if (s.node) s.node.disconnect();
     if (s.ws.readyState === WebSocket.OPEN) s.ws.send(JSON.stringify({ type: "stop" }));
     // safety net; an offline model may need a while for a long recording
@@ -300,7 +425,7 @@
   }
 
   function cleanup(s) {
-    try { s.stream.getTracks().forEach((t) => t.stop()); } catch (_) {}
+    s.streams.forEach(stopStream);
     try { if (s.ctx) s.ctx.close(); } catch (_) {}
     try { s.ws.onclose = null; s.ws.close(); } catch (_) {}
     stopTimer();
@@ -507,6 +632,7 @@
   el.langSelect.addEventListener("change", () => renderBadges());
 
   updateControls();
+  initInputs();
   // Come back in the Single / Multiple position used last time.
   async function restoreMode() {
     let saved = null;
