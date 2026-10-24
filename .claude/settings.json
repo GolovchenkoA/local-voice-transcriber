@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "model": "sonnet",
+  "permissions": {
+    "deny": [
+      "Read(./models/**/*.safetensors)",
+      "Read(./models/**/*.bin)",
+      "Read(./models/**/*.nemo)",
+      "Read(./models/**/*.onnx)",
+      "Read(./models/**/*.pt)",
+      "Read(./models/**/*.ckpt)",
+      "Read(./models/**/tokenizer.json)",
+      "Read(./models/**/.cache/**)",
+      "Read(./.venv/**)",
+      "Read(./**/__pycache__/**)",
+      "Read(./**/*.wav)",
+      "Read(./**/*.mp3)",
+      "Read(./**/*.flac)",
+      "Read(./**/*.log)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR/.venv/Scripts/python.exe\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/trim_bash.py\""
+          }
+        ]
+      }
+    ]
+  }
+}
