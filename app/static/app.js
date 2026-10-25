@@ -13,7 +13,7 @@
     copy: $("copy-btn"), clear: $("clear-btn"),
     modelSelect: $("model-select"), langSelect: $("language-select"),
     diarField: $("diarizer-field"), diarSelect: $("diarizer-select"),
-    radios: document.querySelectorAll('input[name="speakers"]'),
+    modeBtn: $("mode-toggle"), modeText: $("mode-text"), modeKnob: $("mode-knob"),
     bDevice: $("badge-device"), bSpeakers: $("badge-speakers"), bModel: $("badge-model"),
     bDiar: $("badge-diarizer"), bMode: $("badge-mode"), bLang: $("badge-language"),
     inBtn: $("in-btn"), inMenu: $("in-menu"), inCount: $("in-count"),
@@ -38,7 +38,7 @@
   // ---------- controls ----------
   function updateControls() {
     const locked = !!session || busyLoading;
-    for (const r of el.radios) r.disabled = locked;
+    el.modeBtn.disabled = locked;
     el.modelSelect.disabled = locked || !info;
     el.langSelect.disabled = locked || !info || !info.languages.length;
     el.diarSelect.disabled = locked || !info || info.diarization !== "external";
@@ -604,16 +604,21 @@
     idleStatus();
   }
 
-  for (const r of el.radios) {
-    r.addEventListener("change", async () => {
-      if (!r.checked || r.value === mode) return;
-      mode = r.value;
-      try { localStorage.setItem("speakers-mode", mode); } catch (_) {}
-      renderMenus();
-      renderTranscript();
-      await ensureSetup();
-    });
+  function renderModeToggle() {
+    const multi = mode === "multi";
+    el.modeBtn.setAttribute("aria-checked", String(multi));
+    el.modeText.textContent = multi ? "Multiple" : "Single";
+    el.modeKnob.textContent = multi ? "2+" : "1";
   }
+
+  el.modeBtn.addEventListener("click", async () => {
+    mode = mode === "multi" ? "single" : "multi";
+    try { localStorage.setItem("speakers-mode", mode); } catch (_) {}
+    renderModeToggle();
+    renderMenus();
+    renderTranscript();
+    await ensureSetup();
+  });
 
   el.modelSelect.addEventListener("change", async () => {
     const wanted = el.modelSelect.value;
@@ -639,7 +644,7 @@
     try { saved = localStorage.getItem("speakers-mode"); } catch (_) {}
     if (saved !== "multi" || mode === "multi") return;
     mode = "multi";
-    document.getElementById("mode-multi").checked = true;
+    renderModeToggle();
     renderMenus();
     renderTranscript();
     await ensureSetup();

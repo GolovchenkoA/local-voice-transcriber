@@ -19,15 +19,14 @@
     </div>
 
     <div class="controls">
-      <fieldset class="field speakers">
-        <legend class="field-label">Speakers</legend>
-        <div class="segmented">
-          <input type="radio" name="speakers" id="mode-single" value="single" checked>
-          <label for="mode-single">Single</label>
-          <input type="radio" name="speakers" id="mode-multi" value="multi">
-          <label for="mode-multi">Multiple</label>
-        </div>
-      </fieldset>
+      <div class="field speakers">
+        <span class="field-label" id="speakers-label">Speakers</span>
+        <button class="switch" id="mode-toggle" type="button" role="switch" aria-checked="false"
+                aria-labelledby="speakers-label mode-text">
+          <span class="knob" id="mode-knob" aria-hidden="true">1</span>
+          <span id="mode-text">Single</span>
+        </button>
+      </div>
       <div class="selects">
         <label class="field field-model">
           <span class="field-label">Model</span>

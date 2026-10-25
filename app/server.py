@@ -7,7 +7,7 @@ import threading
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -23,6 +23,15 @@ class ModelChoice(BaseModel):
 def create_app(engine: Engine) -> FastAPI:
     app = FastAPI(title="Local Voice Transcriber")
     busy = {"on": False}  # one recording, or one model load, at a time
+
+    @app.middleware("http")
+    async def always_revalidate(request, call_next):
+        # The page files are small and local; make the browser check them every time so that
+        # after an update it never mixes a new page with an old script.
+        response = await call_next(request)
+        if request.url.path == "/" or request.url.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
 
     @app.get("/api/info")
     def info() -> dict:
@@ -68,8 +77,14 @@ def create_app(engine: Engine) -> FastAPI:
         return engine.info()
 
     @app.get("/")
-    def index() -> FileResponse:
-        return FileResponse(STATIC_DIR / "index.html")
+    def index() -> HTMLResponse:
+        # Add each file's modification time to its address, so a browser can never run an old script
+        # (or style sheet) next to a new page.
+        html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+        for name in ("app.js", "style.css"):
+            stamp = int((STATIC_DIR / name).stat().st_mtime)
+            html = html.replace(f"/static/{name}", f"/static/{name}?v={stamp}")
+        return HTMLResponse(html)
 
     @app.websocket("/ws/transcribe")
     async def transcribe(ws: WebSocket) -> None:

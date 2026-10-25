@@ -37,15 +37,16 @@ button:focus-visible { outline: 3px solid var(--text); outline-offset: 3px; }
   gap: 16px;
 }
 
-.top { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 16px; flex: none; }
+/* The controls always sit under the brand, never beside it. */
+.top { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; flex: none; }
 .brand { display: flex; align-items: center; gap: 12px; }
 .brand-text { display: flex; flex-direction: column; }
 .brand-name { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
 .brand-sub { font-size: 13px; color: var(--muted); }
 
-/* The Speakers toggle is on top; all drop-down menus are in one row below it. */
-.controls { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; min-width: 0; width: min(700px, 100%); }
-.selects { display: flex; flex-wrap: nowrap; align-items: flex-end; gap: 12px; width: 100%; }
+/* The Speakers toggle is on the left; the drop-down menus are in one row to its right. */
+.controls { display: flex; align-items: flex-end; gap: 16px; min-width: 0; width: min(900px, 100%); }
+.selects { display: flex; flex-wrap: nowrap; align-items: flex-end; gap: 12px; flex: 1 1 0; min-width: 0; }
 .selects .field { flex: 1 1 0; min-width: 0; }
 .selects .field-model { flex-grow: 1.6; }
 .field { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; border: 0; min-width: 0; }
@@ -70,17 +71,21 @@ select:focus-visible { outline: 3px solid var(--text); outline-offset: 2px; }
 select:disabled { opacity: 0.55; cursor: not-allowed; }
 select option:disabled { color: #6b7d72; }
 
-/* Single / Multiple speakers toggle. Its two buttons use the very same rule as the Record button
-   (see ".rec-btn, .segmented label" below). Only the state differs: the chosen one has full colour
-   and a ring, the other one is dimmed. */
-.segmented { display: inline-flex; gap: 8px; }
-.segmented input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
-.segmented input:not(:checked) + label { opacity: 0.45; }
-.segmented input:not(:checked) + label:hover { opacity: 0.8; }
-.segmented input:checked + label { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
-.segmented input:focus-visible + label { outline: 3px solid var(--text); outline-offset: 5px; }
-.segmented input:disabled + label { cursor: not-allowed; }
-.segmented input:disabled:not(:checked) + label { opacity: 0.3; }
+/* Single / Multiple speakers: one small pill that shows the current choice; click to flip it.
+   The round knob shows the number of speakers ("1" or "2+") and sits left for Single, right for Multiple. */
+.switch {
+  flex: none; width: 128px; min-height: 44px; padding: 0 6px; border: 0; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: space-between; gap: 8px;
+  background: var(--accent); color: var(--bg); font-size: 15px; font-weight: 700; cursor: pointer; user-select: none;
+}
+.switch[aria-checked="true"] { flex-direction: row-reverse; padding-left: 16px; }
+.switch[aria-checked="false"] { padding-right: 16px; }
+.switch .knob {
+  flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--bg); color: var(--accent); font: 700 13px var(--mono);
+}
+.switch:focus-visible { outline: 3px solid var(--text); outline-offset: 3px; }
+.switch:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .badges { display: flex; flex-wrap: wrap; gap: 8px; font-family: var(--mono); font-size: 12px; flex: none; }
 .badge {
@@ -189,8 +194,7 @@ select option:disabled { color: #6b7d72; }
 }
 .viz.live .bar { background: var(--hot); }
 
-/* One shared look for the Record button and the Speakers toggle buttons */
-.rec-btn, .segmented label {
+.rec-btn {
   flex: none;
   user-select: none;
   min-height: 52px;
@@ -253,10 +257,9 @@ select option:disabled { color: #6b7d72; }
   .page { padding: 12px; gap: 12px; }
   .transcript-body { font-size: 18px; padding: 14px; }
   .turn p { font-size: 17px; }
-  .controls { width: 100%; }
+  .controls { width: 100%; flex-direction: column; align-items: flex-start; }
   .selects { flex-wrap: wrap; width: 100%; }
   .selects .field { flex: 1 1 200px; }
-  .segmented label { min-width: 0; padding: 0 22px; }
   .rec-info { flex-direction: row; align-items: center; gap: 12px; }
   .viz { order: 3; flex-basis: 100%; }
   .inputs { margin-left: auto; }
